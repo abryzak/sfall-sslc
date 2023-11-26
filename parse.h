@@ -41,7 +41,7 @@ typedef struct {
 #define V_EXPORT   4
 typedef struct {
    int name;   /* offset into program or procedure's namelist */
-   int* references;
+   long* references;
    int numRefs;
    Value value;
    int type;   // this type is where it was declared
@@ -89,7 +89,7 @@ typedef struct {
    int numArgs;
    int defined;
    VariableList variables;
-   int* references;
+   long* references;
    int numRefs;
    int uses;
    int declared;

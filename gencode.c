@@ -76,7 +76,7 @@ void writeOp(unsigned short op, FILE *f) {
 	writeWord(op, f);
 }
 
-static void writeMemory(unsigned char *p, int len, FILE *f) {
+static void writeMemory(char *p, int len, FILE *f) {
 	while(len--) writeByte(*p++, f);
 }
 

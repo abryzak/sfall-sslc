@@ -1,5 +1,5 @@
 /*
- * noconfig.H
+ * noconfig.h
  * Configurations for MCPP not using config.h.
  *
  * WARNING: These are default settings.  To configure for your system, you

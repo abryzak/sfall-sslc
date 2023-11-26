@@ -11,6 +11,6 @@ extern void writeOp(unsigned short op, FILE *f);
 extern void writeInt(unsigned long a, FILE *f);
 extern void writeFloat(float a, FILE *f);
 extern void writeString(unsigned long a, FILE *f);
-extern int writeBlock(NodeList *n, int i, FILE *f);
+static int writeBlock(NodeList *n, int i, FILE *f);
 
 #endif

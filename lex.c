@@ -660,6 +660,7 @@ top:
 
 	case '\t':
 	case ' ':
+	case '\r':
 	case '\n':
 	case '\v':
 		goto top;

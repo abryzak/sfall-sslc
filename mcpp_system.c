@@ -33,22 +33,22 @@
  *
  * Routines dependent on O.S., compiler or compiler-driver.
  * To port MCPP for the systems not yet ported, you must
- *      1. specify the constants in "configed.H" or "noconfig.H",
+ *      1. specify the constants in "configed.H" or "noconfig.h",
  *      2. append the system-dependent routines in this file.
  */
-#include    "system.H"
-#include    "internal.H"
+#include    "system.h"
+#include    "internal.h"
 
-#include    "direct.h"
-#define getcwd( buf, size)  _getcwd( buf, size)
+// #include    "direct.h"
+// #define getcwd( buf, size)  _getcwd( buf, size)
 #include    "sys/types.h"
 #include    "sys/stat.h"                        /* For stat()       */
 #if     ! defined( S_ISREG)
 #define S_ISREG( mode)  (mode & S_IFREG)
 #define S_ISDIR( mode)  (mode & S_IFDIR)
 #endif
-#define S_IFREG     _S_IFREG
-#define S_IFDIR     _S_IFDIR
+// #define S_IFREG     _S_IFREG
+// #define S_IFDIR     _S_IFDIR
 #define stat( path, stbuf)  _stat( path, stbuf)
 
 /* Function to compare path-list    */
@@ -197,7 +197,6 @@ static int      undef_cnt;              /* Count of undef_list      */
 
 /* sharp_filename is filename for #line line, used only in cur_file()   */
 static char *   sharp_filename = NULL;
-static const int  compat_mode = 0;
                 /* "Compatible" mode of recursive macro expansion   */
 #define MAX_ARCH_LEN    16
 static char     arch[ MAX_ARCH_LEN];    /* -arch or -m64, -m32 options      */
@@ -1293,7 +1292,7 @@ static char *   bsl2sl(
 
 static const char * const   unknown_arg =
         "Unknown argument \"%s\"";      /*_W1_*/
-static const char * const   not_ident =
+static const char * const   not_ident2 =
         "Not an identifier \"%s\"";     /*_W1_*/
 
 static int  is_junk( void)
@@ -1350,7 +1349,7 @@ void    do_pragma( void)
 
     if (token_type != NAM) {
         if (warn_level & 1)
-            cwarn( not_ident, work_buf, 0L, NULL);
+            cwarn( not_ident2, work_buf, 0L, NULL);
         goto  skip_nl;
     } else if (str_eq( identifier, "once")) {   /* #pragma once     */
        if (! is_junk()) {

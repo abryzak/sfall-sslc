@@ -58,7 +58,7 @@ int expressionNesting = 0;
 static void freeVariableList(VariableList *v);
 static void freeVariable(Variable *v);
 static void parseWhile(Procedure *p, NodeList *n);
-static int writeBlock(NodeList *n, int i, FILE *f);
+// static int writeBlock(NodeList *n, int i, FILE *f);
 static int variable(VariableList *v, char **names, int type, ArrayVarList* arrays, int allowMulti);
 
 extern FILE* parseroutput;
@@ -272,10 +272,10 @@ static int findName(char *namelist, char *name) {
 	if (!namelist) return -1;
 
 	n = namelist + 4;
-	while (*(unsigned short *)n != 0xffff) {
+	while (*(uint16_t *)n != 0xffff) {
 		if (_stricmp(n + 2, name) == 0)
 			return n + 2 - namelist;
-		n += *(unsigned short *)n + 2;
+		n += *(uint16_t *)n + 2;
 	}
 	return -1;
 }
@@ -286,10 +286,10 @@ static int findString(char *namelist, char *name) {
 	if (!namelist) return -1;
 
 	n = namelist + 4;
-	while (*(unsigned short *)n != 0xffff) {
+	while (*(uint16_t *)n != 0xffff) {
 		if (strcmp(n + 2, name) == 0)
 			return n + 2 - namelist;
-		n += *(unsigned short *)n + 2;
+		n += *(uint16_t *)n + 2;
 	}
 	return -1;
 }
@@ -311,8 +311,8 @@ char *getName(int offset, char *namelist) {
 * you have to have the namelist defining that name.
 */
 static int addName(char **namelist, char *name) {
-	unsigned short slen = strlen(name);
-	long tlen;
+	uint16_t slen = strlen(name);
+	uint32_t tlen;
 	char *n = *namelist;
 	char *c;
 	int odd = 0;
@@ -325,13 +325,13 @@ static int addName(char **namelist, char *name) {
 
 	if (!n) {
 		n = (char*)malloc(4 + 2 + slen + 2);
-		*(long *)n = 2 + slen;
+		*(uint32_t *)n = 2 + slen;
 		c = n + 4;
 	}
 	else {
 		int i;
 
-		tlen = *(long *)n;
+		tlen = *(uint32_t *)n;
 		i = findName(n, name);
 		if (i != -1)
 			return i;
@@ -343,11 +343,11 @@ static int addName(char **namelist, char *name) {
 		2 for ending length
 		*/
 		n = (char*)realloc(n, 4 + tlen + 2 + slen + 2);
-		*(long *)n = tlen + 2 + slen;
+		*(uint32_t *)n = tlen + 2 + slen;
 		c = n + 4 + tlen;
 	}
-	*(unsigned short *)c = slen;
-	*(unsigned short *)(c + 2 + slen) = 0xffff;
+	*(uint16_t *)c = slen;
+	*(uint16_t *)(c + 2 + slen) = 0xffff;
 	*namelist = n;
 	strcpy(c + 2, name);
 	if (odd) *(c + 2 + slen - 1) = 0;
@@ -355,8 +355,8 @@ static int addName(char **namelist, char *name) {
 }
 
 static int addString(char **namelist, char *name) {
-	unsigned short slen = strlen(name);
-	long tlen;
+	uint16_t slen = strlen(name);
+	uint32_t tlen;
 	char *n = *namelist;
 	char *c;
 	int odd = 0;
@@ -369,13 +369,13 @@ static int addString(char **namelist, char *name) {
 
 	if (!n) {
 		n = (char*)malloc(4 + 2 + slen + 2);
-		*(long *)n = 2 + slen;
+		*(uint32_t *)n = 2 + slen;
 		c = n + 4;
 	}
 	else {
 		int i;
 
-		tlen = *(long *)n;
+		tlen = *(uint32_t *)n;
 		i = findString(n, name);
 		if (i != -1)
 			return i;
@@ -387,11 +387,11 @@ static int addString(char **namelist, char *name) {
 		2 for ending length
 		*/
 		n = (char*)realloc(n, 4 + tlen + 2 + slen + 2);
-		*(long *)n = tlen + 2 + slen;
+		*(uint32_t *)n = tlen + 2 + slen;
 		c = n + 4 + tlen;
 	}
-	*(unsigned short *)c = slen;
-	*(unsigned short *)(c + 2 + slen) = 0xffff;
+	*(uint16_t *)c = slen;
+	*(uint16_t *)(c + 2 + slen) = 0xffff;
 	*namelist = n;
 	strcpy(c + 2, name);
 	if (odd) *(c + 2 + slen - 1) = 0;
@@ -472,18 +472,18 @@ static void assignVariable(VariableList *v, int which, LexData *what) {
 	v->variables[which].initialized = 1;
 }
 
-static void reference(int* numrefs, int** refs) {
+static void reference(int* numrefs, long** refs) {
 	if (!*refs) {
-		*refs = (int*)malloc(8 * 8);
+		*refs = malloc(8 * 2 * sizeof(long));
 //#ifndef BUILDING_DLL // Fakels: fixes list of references for sfall Script Editor Ext
-	} else if (refs[0][numrefs[0] * 2 - 2] == lexGetLineno(currentInputStream) && refs[0][numrefs[0] * 2 - 1] == (int)lexGetFilename(currentInputStream)) {
+	} else if (refs[0][numrefs[0] * 2 - 2] == lexGetLineno(currentInputStream) && refs[0][numrefs[0] * 2 - 1] == (long)lexGetFilename(currentInputStream)) {
 		return;
 //#endif
 	} else if (!(numrefs[0] % 8)) {
-		*refs = (int*)realloc(*refs, (numrefs[0] + 9) * 8);
+		*refs = realloc(*refs, (numrefs[0] + 9) * 2 * sizeof(long));
 	}
 	refs[0][numrefs[0] * 2] = lexGetLineno(currentInputStream);
-	refs[0][numrefs[0] * 2 + 1] = (int)lexGetFilename(currentInputStream);
+	refs[0][numrefs[0] * 2 + 1] = (long)lexGetFilename(currentInputStream);
 	numrefs[0]++;
 }
 

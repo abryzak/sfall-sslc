@@ -35,8 +35,11 @@
  */
 
 #ifndef SYSTEM_H
-    #error "system.H" must be included prior to "internal.H"
+    #error "system.h" must be included prior to "internal.h"
 #endif
+
+#ifndef INTERNAL_H
+#define INTERNAL_H
 
 /* Choices for output destination */
 typedef enum {
@@ -556,3 +559,5 @@ static const short   char_type[ UCHARMAX + 1] = {
    EU12N, EU12N, EU12N, EU12N, EU12N, EU12N, EU12N, EU12N,  /*   F0 .. F7   */
    EU12N, EU12N, EU12N, EU12N, EU12N, EU12N, EU12N, NA,     /*   F8 .. FF   */
 };
+
+#endif
