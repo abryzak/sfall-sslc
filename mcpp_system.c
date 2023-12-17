@@ -43,6 +43,8 @@
 // #define getcwd( buf, size)  _getcwd( buf, size)
 #include    "sys/types.h"
 #include    "sys/stat.h"                        /* For stat()       */
+#include    "dirent.h"
+
 #if     ! defined( S_ISREG)
 #define S_ISREG( mode)  (mode & S_IFREG)
 #define S_ISDIR( mode)  (mode & S_IFDIR)
@@ -625,7 +627,7 @@ static char *   norm_dir(
     return  norm_name;
 }
 
-static char *   norm_path(
+static char *   norm_path_original(
     const char *    dir,        /* Include directory (maybe "", never NULL) */
     const char *    fname,
         /* Filename (possibly has directory part, or maybe NULL)    */
@@ -728,6 +730,286 @@ static char *   norm_path(
         }
     }
 
+    return  norm_name;
+}
+
+static char * walk_case_insensitive_path(const char * path, const char * base)
+{
+    // base must be a valid path and absolute and end with a /
+    // path will be relative to it if it doesn't start with a /
+
+    char *p1 = path;
+    char *p2;
+    char dir[PATHMAX*2+1];
+    int stat_result;
+    struct _stat st_buf;
+    int dir_len = 0;
+    int segment_len = 0;
+    DIR *walkdir;
+    struct dirent *entry;
+    int found = 0;
+
+    // printf("Walking to find path %s in base %s\n", path, base);
+
+    if (*p1 == PATH_DELIM) {
+        p1++;
+        strcpy(dir, "/");
+        dir_len = 1;
+    } else {
+        strcpy(dir, base);
+        dir_len = strlen(base);
+    }
+
+    for (;;) {
+        p2 = strchr(p1, PATH_DELIM);
+        if (p2) *p2 = EOS;
+        segment_len = strlen(p1);
+        if (segment_len == 0) {
+            // path ended with a / so we should maybe check it's
+            // a dir and apppend / if there isn't one?
+            break;
+        }
+        // printf("Checking segment %s against dir %s\n", p1, dir);
+        strcpy(dir + dir_len, p1);
+        if ((stat_result = stat(dir, &st_buf)) != 0) {
+            // walk the current directory to find something that matches p1
+            // in a case-insensitive way
+            // printf("Could not stat, walking directory\n", p1, dir);
+            dir[dir_len] = EOS;
+            walkdir = opendir(dir);
+            if (!walkdir) {
+                // cfatal("Unable to walk due to opendir failure %s\n", dir, 0L, NULL);
+            }
+            found = 0;
+            for (;;) {
+                entry = readdir(walkdir);
+                if (!entry) break;
+                if (strcasecmp(p1, entry->d_name) == 0) {
+                    // printf("Found case insensitive match %s for %s in %s\n", entry->d_name, p1, dir);
+                    strcpy(dir + dir_len, entry->d_name);
+                    dir_len += strlen(entry->d_name);
+                    if ((stat_result = stat(dir, &st_buf)) != 0) {
+                        cfatal("stat failed for %s\n", dir, 0L, NULL);
+                    }
+                    if (S_ISDIR( st_buf.st_mode)) {
+                        // printf("Found as a directory, appending PATH_DELIM\n");
+                        dir[dir_len] = PATH_DELIM;
+                        dir[dir_len+1] = EOS;
+                        dir_len += 1;
+                    } else {
+                        // printf("Found as a file\n");
+                    }
+                    found = 1;
+                    break;
+                }
+            }
+            closedir(walkdir);
+            if (!found) {
+                // printf("Did not find %s on base %s, returning null\n", path, base);
+                return NULL;
+            }
+        } else {
+            dir_len += segment_len;
+            if (S_ISDIR( st_buf.st_mode)) {
+                // printf("Found as a directory, appending PATH_DELIM\n");
+                dir[dir_len] = PATH_DELIM;
+                dir[dir_len+1] = EOS;
+                dir_len += 1;
+            } else {
+                // printf("Found as a file\n");
+            }
+        }
+
+        if (p2) {
+            *p2 = PATH_DELIM;
+            p1 = p2 + 1;
+            if (dir[dir_len-1] != PATH_DELIM && *p1) {
+                cfatal("We generated \"%s\"%.0ld path but still have this remaining to walk: %s\n", dir, 0L, p1);
+            }
+        } else {
+            break;
+        }
+    }
+
+    p1 = xmalloc(dir_len + 1);
+    strcpy(p1, dir);
+    // printf("Returning %s from walk for path %s on base %s\n", p1, path, base);
+    return p1;
+}
+
+static char * norm_path(const char * dir, const char * fname,
+    int     inf,    /* If TRUE, output some infs when (mcpp_debug & PATH)   */
+    int     hmap            /* "header map" file of Apple-GCC       */
+)
+/*
+ * Normalize the pathname removing redundant components such as
+ * "foo/../", "./" and trailing "/.".
+ * Append trailing "/" if 'fname' is NULL.
+ * Change relative path to absolute path.
+ * Dereference a symbolic linked file (or directory) to a real directory/file.
+ * Return a malloc'ed buffer, if the directory/file exists.
+ * Return NULL, if the specified directory/file does not exist or 'dir' is
+ * not a directory or 'fname' is not a regular file.
+ * This routine is called from set_a_dir(), init_gcc_macro(), do_once() and
+ * open_file().
+ */
+{
+    char *  norm_name;                  /* The path-list converted  */
+    char *  start;
+    char *  cp1;
+    char *  cp2;
+    char *  abs_path;
+    int     len;                            /* Should not be size_t */
+    size_t  start_pos = 0;
+    char    slbuf1[ PATHMAX+1];             /* Working buffer       */
+    int stat_result;
+    char * walk_result;
+
+    struct _stat    st_buf;
+
+    // printf("norm_path cur_work_dir: %s, Dir: %s, fname: %s\n", cur_work_dir, dir, fname);
+
+    if (! dir || (*dir && is_full_path( fname)))
+        cfatal( "Bug: Wrong argument to norm_path()"        /* _F_  */
+                , NULL, 0L, NULL);
+    inf = 0;
+
+    strcpy( slbuf1, dir);                   /* Include directory    */
+    len = strlen( slbuf1);
+    if (fname && len && slbuf1[ len - 1] != PATH_DELIM) {
+        slbuf1[ len] = PATH_DELIM;          /* Append PATH_DELIM    */
+        slbuf1[ ++len] = EOS;
+    } else if (! fname && len && slbuf1[ len - 1] == PATH_DELIM) {
+        /* stat() of some systems do not like trailing '/'  */
+        slbuf1[ --len] = EOS;
+    }
+    if (fname)
+        strcat( slbuf1, fname);
+    // printf("norm_name checking if file exists: %s\n", slbuf1);
+    if ((stat_result = stat( slbuf1, & st_buf)) != 0  /* Non-existent         */
+            || (! fname && ! S_ISDIR( st_buf.st_mode))
+                /* Not a directory though 'fname' is not specified  */
+            || (fname && ! S_ISREG( st_buf.st_mode))) 
+                /* Not a regular file though 'fname' is specified   */
+    {
+        if (stat_result == 0 && fname && ! S_ISREG( st_buf.st_mode)) {
+            // printf("dir %s and file %s found but it wasn't a regular file, returning null\n", dir, fname);
+            return NULL;
+        }
+        // printf("stat result for %s = %d, error=%s\n", slbuf1, stat_result, strerror(errno));
+        if (strlen(dir) > 0 && (stat_result = stat(dir, &st_buf)) != 0) {
+            // printf("stat for dir not found, walking directory tree from cur working %s dir to find: %s\n", cur_work_dir, dir);
+            walk_result = walk_case_insensitive_path(dir, cur_work_dir);
+            if (walk_result != NULL) {
+                // printf("RECURSE IN\n");
+                norm_name = norm_path(walk_result, fname, inf, hmap);
+                // printf("RECURSE OUT\n");
+                free(walk_result);
+                return norm_name;
+            } else {
+                // printf("wasn't able to find %s after walk\n", dir);
+            }
+        } else if (stat_result == 0 && (! fname && ! S_ISDIR( st_buf.st_mode))) {
+            // printf("dir %s found but it wasn't a directory, returning null\n", dir);
+            return NULL;
+        } else if (strlen(dir) > 0) {
+            // printf("dir %s found but didn't find %s within so we're going for a walk\n", dir, fname);
+            walk_result = walk_case_insensitive_path(fname, dir);
+            if (walk_result != NULL) {
+                if (fname) {
+                    fname = strrchr(walk_result, PATH_DELIM) + 1;
+                    len = fname - walk_result;
+                    cp1 = xmalloc(len + 1);
+                    memcpy(cp1, walk_result, len);
+                    cp1[len] = EOS;
+                    // printf("RECURSE IN 2\n");
+                    norm_name = norm_path(cp1, fname, inf, hmap);
+                    // printf("RECURSE OUT 2\n");
+                    free(cp1);
+                } else {
+                    // printf("RECURSE IN 3\n");
+                    norm_name = norm_path(walk_result, NULL, inf, hmap);
+                    // printf("RECURSE OUT 3\n");
+                }
+                free(walk_result);
+                return norm_name;
+            } else {
+                // printf("wasn't able to find %s %s after walk\n", dir, fname);
+            }
+        } else {
+            // printf("dir empty didn't find %s within so we're going for a walk in current dir\n", fname);
+            walk_result = walk_case_insensitive_path(fname, cur_work_dir);
+            if (walk_result != NULL) {
+                fname = strrchr(walk_result, PATH_DELIM) + 1;
+                len = fname - walk_result;
+                cp1 = xmalloc(len + 1);
+                memcpy(cp1, walk_result, len);
+                cp1[len] = EOS;
+                // printf("RECURSE IN 4\n");
+                norm_name = norm_path(cp1, fname, inf, hmap);
+                // printf("RECURSE OUT 4\n");
+                free(cp1);
+                return norm_name;
+            } else {
+                // printf("wasn't able to find %s %s after walk\n", dir, fname);
+            }
+        }
+        // printf("walking failed to find %s %s, returning null\n", dir, fname);
+        return  NULL;
+    }
+
+    if (! fname) {
+        slbuf1[ len] = PATH_DELIM;          /* Append PATH_DELIM    */
+        slbuf1[ ++len] = EOS;
+    }
+    len = strlen( slbuf1);
+    start = norm_name = xmalloc( len + 1);  /* Need a new buffer    */
+    strcpy( norm_name, slbuf1);
+    bsl2sl( norm_name);
+
+    cp1 = norm_name;
+
+    if (*(cp1 + 1) == ':')
+        start = cp1 += 2;               /* Next to the drive letter */
+    start_pos = 2;
+    if (len == 1 && *norm_name == '/') {             /* Only "/"     */
+        // printf("norm_name returning in middle: %s\n", norm_name);
+        return  norm_name;
+    }
+
+    if (strncmp( cp1, "./", 2) == 0)    /* Remove beginning "./"    */
+        memmove( cp1, cp1 + 2, strlen( cp1 + 2) + 1);       /* +1 for EOS   */
+    if (*start != '/') {    /* Relative path to current directory   */
+        /* Make absolute path   */
+        abs_path = xmalloc( len + strlen( cur_work_dir) + 1);
+        cp1 = stpcpy( abs_path, cur_work_dir);
+        strcpy( cp1, start);
+        free( norm_name);
+        norm_name = abs_path;
+        start = cp1 = norm_name + start_pos;
+    }
+
+    while ((cp1 = strstr( cp1, "/./")) != NULL)
+        memmove( cp1, cp1 + 2, strlen( cp1 + 2) + 1);
+                                        /* Remove "/." of "/./"     */
+    cp1 = start;
+    /* Remove redundant "foo/../"   */
+    while ((cp1 = strstr( cp1, "/../")) != NULL) {
+        *cp1 = EOS;
+        if ((cp2 = strrchr( start, '/')) != NULL) {
+            if (*(cp1 - 1) != '.') {
+                memmove( cp2 + 1, cp1 + 4, strlen( cp1 + 4) + 1);
+                                        /* Remove "foo/../"         */
+                cp1 = cp2;
+            } else {                                /* Impossible   */
+                break;
+            }
+        } else {                                    /* Impossible   */ 
+            break;
+        }
+    }
+
+    // printf("norm_name returning at end: %s\n", norm_name);
     return  norm_name;
 }
 

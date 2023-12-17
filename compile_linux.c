@@ -1,6 +1,9 @@
 // to compile:
-// 1: musl-gcc -static -c -o compile_linux_mpcc.a compile_linux_mcpp.c
-// 2: musl-gcc -static -o compile_linux ./compile_linux.c ./compile_linux_mpcc.a
+// 1: musl-gcc -static -c -g -o compile_linux_mpcc.a compile_linux_mcpp.c
+// 2: musl-gcc -static -g -o compile_linux ./compile_linux.c ./compile_linux_mpcc.a
+
+// to test:
+// (cd test && ../compile_linux -p -q -Itest-INCLUDE/ hello_world.ssl)
 
 #define __STDC_WANT_LIB_EXT1__ 1
 #define _stricmp strcasecmp
