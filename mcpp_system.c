@@ -778,7 +778,7 @@ static char * walk_case_insensitive_path(const char * path, const char * base)
             dir[dir_len] = EOS;
             walkdir = opendir(dir);
             if (!walkdir) {
-                // cfatal("Unable to walk due to opendir failure %s\n", dir, 0L, NULL);
+                cfatal("Unable to walk due to opendir failure %s\n", dir, 0L, NULL);
             }
             found = 0;
             for (;;) {
@@ -805,6 +805,7 @@ static char * walk_case_insensitive_path(const char * path, const char * base)
             }
             closedir(walkdir);
             if (!found) {
+                if (p2) *p2 = PATH_DELIM;
                 // printf("Did not find %s on base %s, returning null\n", path, base);
                 return NULL;
             }
