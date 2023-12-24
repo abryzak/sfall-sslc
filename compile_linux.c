@@ -4,6 +4,7 @@
 
 // to test:
 // (cd test && ../compile_linux -p -q -Itest-INCLUDE/ hello_world.ssl)
+// typical flags: -q -p -l -O2 -d -s -n -o output-file.int input-file
 
 #define __STDC_WANT_LIB_EXT1__ 1
 #define _stricmp strcasecmp
@@ -254,10 +255,10 @@ int main(int argc, char **argv)
                     }
                 }
 #ifndef WIN2K
+                char tmpbuf[260];
                 if(preprocess) {
                     FILE *newfile;
                     unsigned int letters;
-                    char tmpbuf[260];
                     rand_s(&letters);
                     if(onlypreprocess) {
                         strcpy_s(tmpbuf, 260, name);
@@ -272,6 +273,7 @@ int main(int argc, char **argv)
                     }
                     if(mcpp_lib_main(foo.file, newfile, file, file, defMacro, includeDir)) {
                         parseOutput("*** An error occured during preprocessing of %s ***\n", file);
+                        if(!onlypreprocess) unlink(tmpbuf);
                         return 1;
                     }
                     fclose(foo.file);
@@ -282,6 +284,7 @@ int main(int argc, char **argv)
                 if(!onlypreprocess) {
                     parse(&foo, name);
                     freeCurrentProgram();
+                    if (preprocess) unlink(tmpbuf);
                 }
                 fclose(foo.file);
                 FreeFileNames();
